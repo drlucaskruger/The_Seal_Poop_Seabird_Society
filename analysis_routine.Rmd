@@ -25,7 +25,7 @@ seal$birds<-seal$Giant.Petrel+seal$Gull+
 seal$seals<-seal$Weddell+seal$Elephant+
   seal$Fur.seal ### sum all seal species abundance
 
-sb<-data.frame(seal[12],seal[4],seal[15:16]) 
+sb<-data.frame(seal[12],seal[4],seal[13:14]) 
 
 sbm<-melt(sb,id.vars = c("timeStamp","Hab"))  ### species and count columns by melting
 
