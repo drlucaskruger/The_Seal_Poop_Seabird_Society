@@ -1,0 +1,134 @@
+---
+title: "Seabird coprophagy communities analysis"
+author: "Lucas Krüger"
+date: "2024-03-22"
+output: html_document
+---
+
+```{r}
+library(ggplot2)
+library(lubridate)
+library(pscl)
+library(sjPlot)
+library(vegan)
+library(reshape2)
+library(patchwork)
+library(ggplotify)
+
+seal<-read.csv("Seal_Census_Harmony.csv") ###read data
+
+seal$timeStamp<-as.POSIXct(strptime(paste(seal$Date,seal$Time),
+                                    format="%d.%m.%Y %H:%M")) ### time data
+seal$birds<-seal$Giant.Petrel+seal$Gull+
+  seal$Skua+seal$Chionis ### sum all bird species abundance
+
+seal$seals<-seal$Weddell+seal$Elephant+
+  seal$Fur.seal ### sum all seal species abundance
+
+sb<-data.frame(seal[12],seal[4],seal[15:16]) 
+
+sbm<-melt(sb,id.vars = c("timeStamp","Hab"))  ### species and count columns by melting
+
+```
+
+## descriptive plot 
+
+```{r}
+
+(ggplot(sbm,aes(timeStamp,value,colour=variable,shape=variable))+geom_jitter(size=3)+
+    theme_bw()+xlab("Date")+ylab("count"))+
+  scale_colour_manual(values=c("red","blue"))
+  #scale_y_log10())
+
+
+```
+
+## influence of seal numbers in bird counts
+
+
+
+```{r}
+hmod3<-hurdle(birds~seals, data=seal, 
+              dist = c("poisson"),
+              zero.dist = c("binomial"),
+              link = c("logit"),
+              control = hurdle.control(),
+              model = TRUE, y = TRUE, x = T)
+summary(hmod3)
+
+seal$bin<-ifelse(seal$birds>0,1,0)
+ggplot(seal,aes(seals,bin))+
+  stat_smooth(method="glm", method.args = list(family = "binomial"))+
+  #geom_point()+
+  theme_bw()+xlim(0,114)+
+  xlab("seal count")+ylab("probability")+
+  ggtitle("a. Birds presence")+
+
+
+ggplot(subset(seal,birds>0),aes(seals,birds))+
+  geom_smooth(se=F,method="lm")+
+  geom_point()+
+  theme_bw()+xlim(1,114)+
+  xlab("seal count")+ylab("bird count")+
+  scale_colour_manual(values=c("red","blue"))+
+  #scale_x_log10()+
+  scale_y_log10()+
+  ggtitle("b. Bird count")
+
+```
+
+### species level associations
+
+```{r}
+animals<-na.omit(data.frame(SGP=seal$Giant.Petrel,WS=seal$Weddell,
+                            SES=seal$Elephant,
+                    KG=seal$Gull,BS=seal$Skua,
+                    SS=seal$Chionis,FS=seal$Fur.seal)) ###data frame with species
+
+sol<- metaMDS(animals, distance = "gower", k = 4, trymax = 20,
+                 autotransform =T,model = "global",zerodist = "add",
+                 noshare = 0, wascores = TRUE, expand = TRUE,
+                 trace = 1, plot = F)
+
+plot(sol, display = c("species"), choices = c(1, 2),
+     type = "t", shrink = FALSE)
+
+stressplot(sol)
+
+sol$stress
+
+scores<-data.frame(scores(sol, display = 'sites'))
+
+
+scr.mams <- cbind(as.data.frame(scores), 
+                  Habitat=as.factor(seal$Hab)) ###join NMDS scores with habitats
+
+cent.mam <- aggregate(cbind(NMDS1, NMDS2,NMDS3) ~ Habitat, 
+                      data = scr.mams, FUN = mean) ### calculate centroids
+
+sps.mam<-data.frame(scores(sol,display="species")) ###species NMDS scores
+
+sps.mam$Species<-c("SGP","WS","SES","KG","BS","SS","FS")
+
+ggplot() +
+  geom_hline(yintercept=0,linetype="dashed",size=1,colour="grey50")+
+  geom_vline(xintercept = 0,linetype="dashed",size=1,colour="grey50")+
+  geom_text(data=sps.mam,aes(x=NMDS1,y=NMDS2,label=Species),size=3)+
+  geom_point(data=scr.mams, 
+             aes(x = NMDS1, y = NMDS2, colour = Habitat,shape=Habitat))+
+  geom_point(data = cent.mam, 
+             aes(x = NMDS1, y = NMDS2, colour = Habitat,shape=Habitat),
+             size = 6) +                         
+  scale_colour_manual(values=c("red","blue"))+
+  
+  theme_bw() ### NMDS "biplot"
+
+
+#permutational analysis of variance comparing groups on axis 1
+head(seal)
+perm1<-adonis2(animals~seal$Hab,permutations=1999,method="gower")
+print(perm1)
+
+
+
+```
